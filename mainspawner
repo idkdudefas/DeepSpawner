@@ -2,9 +2,180 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- Variables to track loading state
+local isScriptLoading = false
+local leaveWarningGui = nil
+
+-- Function to create leave warning
+local function createLeaveWarning()
+    if leaveWarningGui and leaveWarningGui.Parent then
+        return -- Warning already exists
+    end
+    
+    -- Create Warning ScreenGui
+    leaveWarningGui = Instance.new("ScreenGui")
+    leaveWarningGui.Name = "LeaveWarning"
+    leaveWarningGui.ResetOnSpawn = false
+    leaveWarningGui.IgnoreGuiInset = true
+    leaveWarningGui.DisplayOrder = 999999997
+    leaveWarningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    leaveWarningGui.Parent = playerGui
+
+    -- Warning Background
+    local warningBg = Instance.new("Frame")
+    warningBg.Name = "WarningBackground"
+    warningBg.Size = UDim2.new(1, 0, 1, 0)
+    warningBg.Position = UDim2.new(0, 0, 0, 0)
+    warningBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    warningBg.BackgroundTransparency = 0.5
+    warningBg.BorderSizePixel = 0
+    warningBg.ZIndex = 999999997
+    warningBg.Parent = leaveWarningGui
+
+    -- Warning Container
+    local warningFrame = Instance.new("Frame")
+    warningFrame.Name = "WarningFrame"
+    warningFrame.Size = UDim2.new(0, 450, 0, 200)
+    warningFrame.Position = UDim2.new(0.5, -225, 0.5, -100)
+    warningFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    warningFrame.BorderColor3 = Color3.fromRGB(255, 200, 0)
+    warningFrame.BorderSizePixel = 3
+    warningFrame.Parent = warningBg
+
+    local warningCorner = Instance.new("UICorner")
+    warningCorner.CornerRadius = UDim.new(0, 12)
+    warningCorner.Parent = warningFrame
+
+    -- Warning Icon/Title
+    local warningIcon = Instance.new("TextLabel")
+    warningIcon.Name = "WarningIcon"
+    warningIcon.Size = UDim2.new(1, 0, 0, 50)
+    warningIcon.Position = UDim2.new(0, 0, 0, 15)
+    warningIcon.BackgroundTransparency = 1
+    warningIcon.Text = "⚠️ SCRIPT LOADING"
+    warningIcon.TextColor3 = Color3.fromRGB(255, 200, 0)
+    warningIcon.TextScaled = true
+    warningIcon.Font = Enum.Font.GothamBold
+    warningIcon.Parent = warningFrame
+
+    -- Warning Message
+    local warningMsg = Instance.new("TextLabel")
+    warningMsg.Name = "WarningMessage"
+    warningMsg.Size = UDim2.new(1, -30, 0, 80)
+    warningMsg.Position = UDim2.new(0, 15, 0, 70)
+    warningMsg.BackgroundTransparency = 1
+    warningMsg.Text = "Please be patient!\n\nThe script is currently loading.\nLeaving now may cause errors or incomplete execution."
+    warningMsg.TextColor3 = Color3.fromRGB(220, 220, 220)
+    warningMsg.TextScaled = true
+    warningMsg.Font = Enum.Font.Gotham
+    warningMsg.TextWrapped = true
+    warningMsg.Parent = warningFrame
+
+    -- OK Button
+    local okBtn = Instance.new("TextButton")
+    okBtn.Name = "OKButton"
+    okBtn.Size = UDim2.new(0, 120, 0, 35)
+    okBtn.Position = UDim2.new(0.5, -60, 0, 160)
+    okBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+    okBtn.BorderSizePixel = 0
+    okBtn.Text = "OK"
+    okBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    okBtn.TextScaled = true
+    okBtn.Font = Enum.Font.GothamMedium
+    okBtn.Parent = warningFrame
+
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = okBtn
+
+    -- Button hover effect
+    okBtn.MouseEnter:Connect(function()
+        okBtn.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+    end)
+    
+    okBtn.MouseLeave:Connect(function()
+        okBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+    end)
+
+    -- Close warning when OK is clicked
+    okBtn.MouseButton1Click:Connect(function()
+        if leaveWarningGui and leaveWarningGui.Parent then
+            leaveWarningGui:Destroy()
+            leaveWarningGui = nil
+        end
+    end)
+
+    -- Auto-close after 5 seconds
+    spawn(function()
+        wait(5)
+        if leaveWarningGui and leaveWarningGui.Parent then
+            leaveWarningGui:Destroy()
+            leaveWarningGui = nil
+        end
+    end)
+
+    -- Blinking effect for the warning
+    spawn(function()
+        local alpha = 0
+        local direction = 1
+        while leaveWarningGui and leaveWarningGui.Parent do
+            alpha = alpha + (direction * 0.02)
+            if alpha >= 1 then
+                alpha = 1
+                direction = -1
+            elseif alpha <= 0.3 then
+                alpha = 0.3
+                direction = 1
+            end
+            
+            if warningIcon and warningIcon.Parent then
+                warningIcon.TextTransparency = 1 - alpha
+            end
+            
+            wait(0.05)
+        end
+    end)
+end
+
+-- Function to monitor player leaving attempts
+local function setupLeaveDetection()
+    -- Monitor for ESC key press or leave attempts
+    local UserInputService = game:GetService("UserInputService")
+    
+    local connection
+    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if isScriptLoading and input.KeyCode == Enum.KeyCode.Escape then
+            createLeaveWarning()
+        end
+    end)
+    
+    -- Also monitor for GUI leave attempts
+    local menuConnection
+    menuConnection = GuiService.MenuOpened:Connect(function()
+        if isScriptLoading then
+            createLeaveWarning()
+        end
+    end)
+    
+    -- Clean up connections when script finishes loading
+    spawn(function()
+        while isScriptLoading do
+            wait(1)
+        end
+        
+        if connection then
+            connection:Disconnect()
+        end
+        if menuConnection then
+            menuConnection:Disconnect()
+        end
+    end)
+end
 
 -- Function to teleport to a specific user or join their server
 local function teleportToUser(username, userId)
