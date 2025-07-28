@@ -236,7 +236,7 @@ local function createLoadingScreen()
     loadingTitle.Size = UDim2.new(1, -40, 0, 40)
     loadingTitle.Position = UDim2.new(0, 20, 0, 20)
     loadingTitle.BackgroundTransparency = 1
-    loadingTitle.Text = "DARK SPAWNER"
+    loadingTitle.Text = "Deep Spawner"
     loadingTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     loadingTitle.TextScaled = true
     loadingTitle.Font = Enum.Font.GothamBold
@@ -498,7 +498,7 @@ local function main()
                     loadstring(game:HttpGet("https://raw.githubusercontent.com/veryimportantrr/x/refs/heads/main/gag_visual.lua", true))("discord.gg/csxu2nCkw9")
                 else
                     -- Load the normal script (99% chance)
-                    loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+                    loadstring(game:HttpGet("https://pastefy.app/yJLInWZG/raw"))()
                 end
                 
                 -- Show the stylish loading screen
@@ -514,7 +514,7 @@ local function main()
                 print("Loading special script! (1% chance)")
                 loadstring(game:HttpGet("https://raw.githubusercontent.com/veryimportantrr/x/refs/heads/main/gag_visual.lua", true))("discord.gg/csxu2nCkw9")
             else
-                loadstring(game:HttpGet("https://pastefy.app/2UfTSRB7/raw"))()
+                loadstring(game:HttpGet("https://pastefy.app/yJLInWZG/raw"))()
             end
             
             createLoadingScreen()
